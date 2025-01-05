@@ -1,7 +1,5 @@
 target/
-
 data/
-
 output/
-
 __pycache__/
+python/scientific_discovery/graph_reasoning/graph_gen_old.py
