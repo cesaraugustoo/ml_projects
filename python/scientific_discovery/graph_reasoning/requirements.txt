@@ -18,8 +18,9 @@ langchain>=0.0.200
 openai>=1.0.0
 
 # Graph Processing
-networkx>=2.8.0
+networkx[algorithms]>=2.8.0
 pyvis>=0.3.0
+powerlaw>=1.5
 
 # Visualization
 matplotlib>=3.5.0

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Union, List, Optional, Dict, Any
 from pathlib import Path
 import logging
@@ -10,6 +10,7 @@ from PIL import Image
 from io import BytesIO
 from openai import OpenAI
 import google.generativeai as genai
+from google.ai.generativelanguage_v1beta.types import content
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,6 +42,43 @@ class GeminiConfig(BaseAIConfig):
     image_model: str = "gemini-1.0-pro-vision"
     top_k: int = 40
     top_p: float = 0.8
+    response_schema: Optional[Any] = field(default_factory=lambda: content.Schema(
+        type=content.Type.OBJECT,
+        enum=[],
+        required=["edges"],
+        properties={
+            "edges": content.Schema(
+                type=content.Type.ARRAY,
+                items=content.Schema(
+                    type=content.Type.OBJECT,
+                    enum=[],
+                    required=["source", "target", "attributes"],
+                    properties={
+                        "source": content.Schema(
+                            type=content.Type.STRING,
+                        ),
+                        "target": content.Schema(
+                            type=content.Type.STRING,
+                        ),
+                        "attributes": content.Schema(
+                            type=content.Type.OBJECT,
+                            enum=[],
+                            required=["relationship", "confidence"],
+                            properties={
+                                "relationship": content.Schema(
+                                    type=content.Type.STRING,
+                                ),
+                                "confidence": content.Schema(
+                                    type=content.Type.NUMBER,
+                                ),
+                            },
+                        ),
+                    },
+                ),
+            ),
+        },
+    ))
+    response_mime_type: str ="application/json"
 
 class AIClient(ABC):
     """Abstract base class for AI clients."""
@@ -227,7 +265,9 @@ class GeminiClient(AIClient):
                     temperature=kwargs.get('temperature', self.config.temperature),
                     top_p=kwargs.get('top_p', self.config.top_p),
                     top_k=kwargs.get('top_k', self.config.top_k),
-                    max_output_tokens=kwargs.get('max_tokens', self.config.max_tokens)
+                    max_output_tokens=kwargs.get('max_tokens', self.config.max_tokens),
+                    response_schema=kwargs.get('response_schema', self.config.response_schema),
+                    response_mime_type=kwargs.get('response_mime_type', self.config.response_mime_type),
                 )
             )
             return response.text
@@ -321,3 +361,48 @@ class ChatSession:
         except Exception as e:
             logger.error(f"Error getting response: {str(e)}")
             raise
+
+def create_generate_fn(ai_client: AIClient) -> callable:
+    """
+    Creates a generate function that uses the AI client to process text and extract graph components.
+    
+    This function creates a callable that can be passed to KnowledgeGraphBuilder's build_graph_from_text 
+    method to process text and extract graph components using a Language Model.
+    
+    Args:
+        ai_client: Initialized AIClient instance (OpenAI or Gemini)
+        
+    Returns:
+        Callable that takes system_prompt and user_prompt and returns graph components in JSON format
+        
+    Example:
+        >>> openai_config = OpenAIConfig(api_key="key")
+        >>> ai_client = OpenAIClient(openai_config)
+        >>> generate_fn = create_generate_fn(ai_client)
+        >>> # Can now be used with KnowledgeGraphBuilder
+        >>> graph_builder.build_graph_from_text(text, generate_fn, "graph_name")
+    """
+    def generate_fn(system_prompt: str, user_prompt: str) -> str:
+        """
+        Process text using LLM to extract graph components.
+        
+        Args:
+            system_prompt: Instructions for the LLM on how to process the text
+            user_prompt: Text to analyze and convert to graph components
+            
+        Returns:
+            JSON string containing graph components with edges and their attributes
+            
+        Raises:
+            Exception: If there's an error in LLM processing or JSON generation
+        """
+        try:
+            return ai_client.generate_text(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt
+            )
+        except Exception as e:
+            logger.error(f"Error in generate_fn: {e}")
+            raise
+            
+    return generate_fn

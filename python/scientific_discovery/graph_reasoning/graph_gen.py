@@ -1,26 +1,11 @@
-from dataclasses import dataclass
-from typing import Optional, List, Dict, Any, Union, Tuple
-from pathlib import Path
-import logging
-import json
-import uuid
-import random
-from datetime import datetime
-
+from graph_reasoning.graph_tools import *
+from graph_reasoning.embedding_tools import *
 import networkx as nx
-import pandas as pd
-import numpy as np
-import torch
-from transformers import AutoTokenizer, AutoModel
-from scipy.spatial.distance import cosine
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
-import matplotlib.pyplot as plt
-import seaborn as sns
-from pyvis.network import Network
+import json
+import logging
+from pathlib import Path
 from tqdm import tqdm
-from IPython.display import display, Markdown
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from dataclasses import dataclass
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,311 +13,136 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class GraphConfig:
-    """Configuration for graph generation and processing."""
+    """
+    Configuration for graph generation and processing.
+    
+    Attributes:
+        chunk_size (int): Size of text chunks for processing
+        chunk_overlap (int): Overlap between chunks
+        similarity_threshold (float): Threshold for node similarity
+        system_prompt (str): Prompt for the generation system
+        model_name (str): Name of the embedding model
+    """
     chunk_size: int = 2500
     chunk_overlap: int = 0
     similarity_threshold: float = 0.95
-    size_threshold: int = 10
-    include_contextual_proximity: bool = False
-    return_only_giant_component: bool = False
-    do_louvain: bool = True
-    do_simplify: bool = True
-    save_common_graph: bool = False
-    repeat_refine: int = 0
-    palette: str = "hls"
+    system_prompt: str = "Extract ontology terms and identify their relationships."
+    model_name: str = "bert-base-uncased"
+
+    def __post_init__(self):
+        if self.chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        if self.chunk_overlap < 0:
+            raise ValueError("chunk_overlap must be non-negative")
+        if not 0 <= self.similarity_threshold <= 1:
+            raise ValueError("similarity_threshold must be between 0 and 1")
 
 class KnowledgeGraphBuilder:
-    """Main class for building and managing knowledge graphs."""
-    
-    def __init__(
-        self,
-        config: GraphConfig,
-        output_dir: Union[str, Path],
-        tokenizer: Optional[AutoTokenizer] = None,
-        model: Optional[AutoModel] = None
-    ):
-        self.config = config
+    """
+    Builds and processes knowledge graphs from textual data.
+    """
+    def __init__(self, config: GraphConfig, output_dir):
+        self.config = config  # Fixed: No trailing comma
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.tokenizer = tokenizer
-        self.model = model
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=config.chunk_size,
-            chunk_overlap=config.chunk_overlap,
-            length_function=len,
-            is_separator_regex=False
-        )
+        self.embedding_tools = EmbeddingTools(model_name=config.model_name)
 
-    def build_graph_from_text(
-        self,
-        text: str,
-        generate_fn: callable,
-        graph_root: str = "graph_root",
-        verbatim: bool = False
-    ) -> Tuple[nx.Graph, Dict[str, np.ndarray]]:
+
+    def build_graph_from_text(self, text: str, generate_fn: callable, graph_root: str) -> tuple[nx.Graph, dict]:
         """
-        Build a knowledge graph from text input.
-        
-        Args:
-            text: Input text to process
-            generate_fn: Function to generate graph components
-            graph_root: Root name for output files
-            verbatim: Whether to print verbose output
-            
+        Builds a knowledge graph from input text.
+
+        Parameters:
+            text (str): The input text.
+            generate_fn (callable): Function to process text and extract components.
+            graph_root (str): Root name for the graph.
+
         Returns:
-            Tuple of (NetworkX graph, node embeddings dictionary)
+            graph (nx.Graph): Generated graph.
+            embeddings (dict): Node embeddings.
         """
+
+        if not text or not isinstance(text, str):
+            raise ValueError("Text input must be a non-empty string")
+        if not callable(generate_fn):
+            raise TypeError("generate_fn must be callable")
+        if not graph_root or not isinstance(graph_root, str):
+            raise ValueError("graph_root must be a non-empty string")
+
+        logger.info("Generating graph components from text.")
         try:
-            # Split text into chunks
-            chunks = self.text_splitter.split_text(text)
-            logger.info(f"Created {len(chunks)} text chunks")
+            graph_components = generate_fn(system_prompt=self.config.system_prompt, user_prompt=text)
+
+            try:
+                graph_data = json.loads(graph_components)
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON response: {graph_components}")
+                raise ValueError("Failed to decode JSON response from LLM.") from e
             
-            # Convert chunks to DataFrame
-            df = self._chunks_to_dataframe(chunks)
-            
-            # Generate graph components
-            concepts = self._generate_graph_components(
-                df, 
-                generate_fn,
-                verbatim=verbatim
-            )
-            
-            # Create graph DataFrame
-            graph_df = self._create_graph_dataframe(concepts)
-            
-            # Add contextual proximity if configured
-            if self.config.include_contextual_proximity:
-                proximity_df = self._add_contextual_proximity(graph_df)
-                graph_df = pd.concat([graph_df, proximity_df], axis=0)
-            
-            # Build NetworkX graph
-            G = self._build_networkx_graph(graph_df)
-            
-            # Generate node embeddings
-            embeddings = self._generate_node_embeddings(G)
-            
-            # Apply post-processing
-            G, embeddings = self._post_process_graph(G, embeddings, verbatim)
-            
-            # Save outputs
-            self._save_graph_outputs(G, graph_df, df, graph_root)
-            
-            return G, embeddings
-            
+            graph = self._build_graph(graph_data)
+
+            embeddings = GraphTools.generate_node_embeddings(graph, self.embedding_tools.tokenizer, self.embedding_tools.model)
+
+            simplified_graph = GraphTools.simplify_graph(graph, embeddings, similarity_threshold=self.config.similarity_threshold)
+            self._analyze_and_save_graph(simplified_graph, embeddings, graph_root)
+
+            return simplified_graph, embeddings
         except Exception as e:
-            logger.error(f"Error building graph: {str(e)}")
+            logger.error(f"Error generating graph: {e}")
             raise
 
-    def _chunks_to_dataframe(self, chunks: List[str]) -> pd.DataFrame:
-        """Convert text chunks to DataFrame."""
-        rows = [
-            {
-                "text": chunk,
-                "chunk_id": uuid.uuid4().hex
-            }
-            for chunk in chunks
-        ]
-        return pd.DataFrame(rows)
+    def _build_graph(self, graph_data: dict) -> nx.Graph:
+        """
+        Constructs a graph from extracted components.
 
-    def _generate_graph_components(
-        self,
-        df: pd.DataFrame,
-        generate_fn: callable,
-        verbatim: bool = False
-    ) -> List[Dict]:
-        """Generate graph components from text chunks."""
-        results = []
-        for _, row in df.iterrows():
-            try:
-                result = self._process_chunk(
-                    row.text,
-                    generate_fn,
-                    {"chunk_id": row.chunk_id},
-                    verbatim
-                )
-                if result:
-                    results.extend(result)
-            except Exception as e:
-                logger.warning(f"Error processing chunk: {str(e)}")
-                continue
-        return results
+        Parameters:
+            graph_data (dict): Extracted graph data containing 'edges' list with 
+                            'source', 'target', and 'attributes' for each edge.
 
-    def _process_chunk(
-        self,
-        text: str,
-        generate_fn: callable,
-        metadata: Dict,
-        verbatim: bool
-    ) -> Optional[List[Dict]]:
-        """Process a single text chunk."""
-        system_prompt = (
-            "You are a network ontology graph maker who extracts terms and their "
-            "relations from a given context, using category theory..."
-        )  # Full prompt omitted for brevity
-        
-        try:
-            response = generate_fn(
-                system_prompt=system_prompt,
-                prompt=f"Context: ```{text}``` \n\nOutput: "
-            )
-            
-            # Clean and parse response
-            response = self._clean_response(response)
-            result = json.loads(response)
-            
-            # Add metadata
-            return [dict(item, **metadata) for item in result]
-            
-        except Exception as e:
-            if verbatim:
-                logger.warning(f"Error processing chunk: {str(e)}")
-            return None
+        Returns:
+            nx.Graph: Constructed graph.
 
-    def _build_networkx_graph(self, df: pd.DataFrame) -> nx.Graph:
-        """Build NetworkX graph from DataFrame."""
-        G = nx.Graph()
-        
-        # Add nodes
-        nodes = pd.concat([df['node_1'], df['node_2']], axis=0).unique()
-        for node in nodes:
-            G.add_node(str(node))
+        Raises:
+            ValueError: If graph_data is missing required fields or has invalid structure.
+        """
+        if not isinstance(graph_data, dict) or 'edges' not in graph_data:
+            raise ValueError("Invalid graph data format: missing 'edges' key")
             
-        # Add edges
-        for _, row in df.iterrows():
-            G.add_edge(
-                str(row["node_1"]),
-                str(row["node_2"]),
-                title=row["edge"],
-                weight=row['count']/4
-            )
-            
-        return G
+        logger.info("Building graph from components.")
+        graph = nx.Graph()
+        for edge in graph_data.get("edges", []):
+            if not all(k in edge for k in ['source', 'target', 'attributes']):
+                raise ValueError(f"Invalid edge format: {edge}")
+            graph.add_edge(edge["source"], edge["target"], **edge["attributes"])
+        return graph
 
-    def _generate_node_embeddings(self, G: nx.Graph) -> Dict[str, np.ndarray]:
-        """Generate embeddings for graph nodes."""
-        if not (self.tokenizer and self.model):
-            return {}
-            
-        embeddings = {}
-        for node in G.nodes():
-            try:
-                inputs = self.tokenizer(
-                    str(node),
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True
-                )
-                with torch.no_grad():
-                    outputs = self.model(**inputs)
-                embeddings[node] = outputs.last_hidden_state.mean(dim=1).numpy()[0]
-            except Exception as e:
-                logger.warning(f"Error generating embedding for node {node}: {str(e)}")
-                continue
-                
-        return embeddings
+    def _analyze_and_save_graph(self, graph, embeddings, graph_root):
+        """
+        Analyzes, saves, and visualizes the graph and embeddings.
 
-    def _post_process_graph(
-        self,
-        G: nx.Graph,
-        embeddings: Dict[str, np.ndarray],
-        verbatim: bool
-    ) -> Tuple[nx.Graph, Dict[str, np.ndarray]]:
-        """Apply post-processing steps to the graph."""
-        if self.config.do_simplify:
-            G, embeddings = self._simplify_graph(G, embeddings, verbatim)
-            
-        if self.config.size_threshold > 0:
-            G = self._remove_small_components(G, self.config.size_threshold)
-            embeddings = {k: v for k, v in embeddings.items() if k in G.nodes()}
-            
-        if self.config.return_only_giant_component:
-            G = self._get_giant_component(G)
-            embeddings = {k: v for k, v in embeddings.items() if k in G.nodes()}
-            
-        if self.config.do_louvain:
-            G = self._apply_louvain(G)
-            
-        return G, embeddings
+        Parameters:
+            graph (nx.Graph): The graph to analyze and save.
+            embeddings (dict): Node embeddings.
+            graph_root (str): Root name for the graph.
+        """
+        logger.info("Analyzing and saving graph outputs.")
+        # Analyze the graph
+        analysis_results = GraphTools.analyze_graph(graph)
+        logger.info(f"Graph Analysis: {analysis_results}")
 
-    def _simplify_graph(
-        self,
-        G: nx.Graph,
-        embeddings: Dict[str, np.ndarray],
-        verbatim: bool
-    ) -> Tuple[nx.Graph, Dict[str, np.ndarray]]:
-        """Simplify graph by merging similar nodes."""
-        # Implementation details omitted for brevity
-        return G, embeddings
+        # Save the graph
+        graph_path = self.output_dir / f"{graph_root}_graph.graphml"
+        GraphTools.save_graph(graph, graph_path)
 
-    @staticmethod
-    def _remove_small_components(G: nx.Graph, min_size: int) -> nx.Graph:
-        """Remove components smaller than min_size."""
-        components = list(nx.connected_components(G))
-        for component in components:
-            if len(component) < min_size:
-                G.remove_nodes_from(component)
-        return G
+        # Save embeddings
+        embedding_path = self.output_dir / f"{graph_root}_embeddings.json"
+        with open(embedding_path, "w") as f:
+            json.dump({k: v.tolist() for k, v in embeddings.items()}, f, indent=4)
 
-    @staticmethod
-    def _get_giant_component(G: nx.Graph) -> nx.Graph:
-        """Extract the largest connected component."""
-        components = list(nx.connected_components(G))
-        if not components:
-            return G
-        return G.subgraph(max(components, key=len)).copy()
+        # Visualize embeddings
+        visualization_path = self.output_dir / f"{graph_root}_embeddings_2d.png"
+        GraphTools.visualize_embeddings_2d(embeddings, visualization_path)
 
-    def _apply_louvain(self, G: nx.Graph) -> nx.Graph:
-        """Apply Louvain community detection."""
-        try:
-            import community.community_louvain as community_louvain
-            communities = community_louvain.best_partition(G)
-            nx.set_node_attributes(G, communities, 'community')
-            return G
-        except Exception as e:
-            logger.warning(f"Error applying Louvain: {str(e)}")
-            return G
-
-    def _save_graph_outputs(
-        self,
-        G: nx.Graph,
-        graph_df: pd.DataFrame,
-        chunks_df: pd.DataFrame,
-        graph_root: str
-    ) -> None:
-        """Save graph outputs to files."""
-        try:
-            # Save graph in GraphML format
-            nx.write_graphml(G, self.output_dir / f"{graph_root}.graphml")
-            
-            # Save DataFrames
-            graph_df.to_csv(self.output_dir / f"{graph_root}_graph.csv", index=False)
-            chunks_df.to_csv(self.output_dir / f"{graph_root}_chunks.csv", index=False)
-            
-            # Generate and save visualization
-            net = Network(notebook=True, height="900px", width="100%")
-            net.from_nx(G)
-            net.save(str(self.output_dir / f"{graph_root}.html"))
-            
-        except Exception as e:
-            logger.error(f"Error saving outputs: {str(e)}")
-
-# Example usage:
-"""
-config = GraphConfig(
-    chunk_size=2500,
-    chunk_overlap=0,
-    similarity_threshold=0.95
-)
-
-builder = KnowledgeGraphBuilder(
-    config=config,
-    output_dir="./output",
-    tokenizer=AutoTokenizer.from_pretrained("bert-base-uncased"),
-    model=AutoModel.from_pretrained("bert-base-uncased")
-)
-
-G, embeddings = builder.build_graph_from_text(
-    text="Your input text here",
-    generate_fn=your_generate_function
-)
-"""
+        # Detect and visualize communities
+        community_path = self.output_dir / f"{graph_root}_community.png"
+        GraphTools.detect_and_visualize_communities(graph, output_path=community_path)
