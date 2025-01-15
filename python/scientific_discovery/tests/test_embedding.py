@@ -11,9 +11,9 @@ def test_embedding_generation(embedding_tools):
     assert embeddings.shape[1] > 0  # Embedding dimension
 
 def test_embedding_comparison(embedding_tools):
-    text1 = "Material science research"
-    text2 = "Scientific materials study"
-    similarity = embedding_tools.compare_embeddings([text1], [text2])
+    text1 = ["Material science research"]
+    text2 = ["Scientific materials study"]
+    similarity = embedding_tools.compare_embeddings(text1, text2)
     
-    assert isinstance(similarity, float)
+    assert isinstance(similarity, (float, np.floating))
     assert 0 <= similarity <= 1

@@ -21,14 +21,44 @@ def embedding_tools():
     return EmbeddingTools(model_name="bert-base-uncased")
 
 @pytest.fixture
-def mock_llm_client(mocker):
+def mock_llm_client(mocker, mock_responses):
     mock_config = OpenAIConfig(
         api_key="test_key",
         organization="test_org"
     )
     client = OpenAIClient(mock_config)
-    mocker.patch.object(client, 'generate_text', return_value="Test response")
+    mocker.patch.object(
+        client, 
+        'generate_text', 
+        side_effect=[
+            mock_responses["graph_components"],
+            mock_responses["agent_response"]
+        ]
+    )
     return client
+
+@pytest.fixture
+def mock_responses():
+    return {
+        "graph_components": '''{
+            "edges": [
+                {
+                    "source": "material",
+                    "target": "property",
+                    "attributes": {"type": "has"}
+                }
+            ]
+        }''',
+        "agent_response": '''{
+            "relationships": [
+                {
+                    "source": "material",
+                    "target": "property",
+                    "relationship": "is_a"
+                }
+            ]
+        }'''
+    }
 
 @pytest.fixture
 def science_agent_group(mock_llm_client):

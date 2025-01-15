@@ -2,6 +2,7 @@ target/
 data/
 output/
 __pycache__/
+test_data/
 *_old.py
 .coverage
 .env

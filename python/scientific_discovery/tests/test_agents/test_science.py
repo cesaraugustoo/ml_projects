@@ -1,9 +1,9 @@
 import pytest
 from scientific_discovery.src.agent_tools.science import (
     ScientistAgent,
-    OntologistAgent,
-    CriticAgent,
-    ScienceAgentGroup
+    ScienceAgentGroup,
+    ScienceRole,
+    ScienceAgentConfig,
 )
 
 def test_scientist_agent_hypothesis_generation(mock_llm_client):

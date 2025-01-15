@@ -5,8 +5,10 @@ from scientific_discovery.src.agent_tools.base import (
     AgentRole,
     Message,
     ConversationMemory,
-    AgentFactory
+    AgentFactory,
+    AgentRole
 )
+from scientific_discovery.src.agent_tools.science import ScienceRole
 
 def test_message_creation():
     """Test message object creation and conversion."""
@@ -70,7 +72,7 @@ def test_conversation_memory():
     assert len(context) == 2
     assert context[-1].content == "Message 3"
 
-def test_agent_factory():
+def test_agent_factory(mock_llm_client):
     """Test agent factory creation methods."""
     config = AgentConfig(
         name="test_agent",
@@ -87,27 +89,27 @@ def test_agent_factory():
         AgentFactory.create_agent("invalid_type", config, mock_llm_client)
 
 class TestBaseAgent:
-    """Test base agent functionality."""
-    
     @pytest.fixture
-    def base_agent(self, mock_llm_client):
+    def concrete_agent(self, mock_llm_client):
+        class ConcreteAgent(BaseAgent):
+            def process_message(self, message: str) -> str:
+                return f"Processed: {message}"
+        
         config = AgentConfig(
             name="test_agent",
-            role=AgentRole.PLANNER,
+            role=AgentRole.PLANNER,  # Use AgentRole instead of ScienceRole
             system_message="Test system message"
         )
-        return BaseAgent(config, mock_llm_client)
-    
-    def test_termination_check(self, base_agent):
-        """Test message termination detection."""
-        assert base_agent._should_terminate("TERMINATE")
-        assert base_agent._should_terminate("Task DONE")
-        assert not base_agent._should_terminate("Regular message")
-    
-    def test_agent_reset(self, base_agent):
-        """Test agent state reset."""
-        base_agent.memory.add_message(
+        return ConcreteAgent(config, mock_llm_client)
+
+    def test_termination_check(self, concrete_agent):
+        assert concrete_agent._should_terminate("TERMINATE")
+        assert concrete_agent._should_terminate("Task DONE")
+        assert not concrete_agent._should_terminate("Regular message")
+
+    def test_agent_reset(self, concrete_agent):
+        concrete_agent.memory.add_message(
             Message(role="user", content="Test")
         )
-        base_agent.reset()
-        assert len(base_agent.memory.messages) == 0
+        concrete_agent.reset()
+        assert len(concrete_agent.memory.messages) == 0
