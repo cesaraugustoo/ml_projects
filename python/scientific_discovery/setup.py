@@ -12,7 +12,8 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/scientific_discovery",
-    packages=find_packages(),
+    packages=find_packages(where=".", exclude=["tests*"]),
+    package_dir={"": "."},
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Science/Research",
@@ -65,6 +66,7 @@ setup(
         'dev': [
             'pytest>=7.0.0',
             'pytest-cov>=4.0.0',
+            'pytest-mock>=3.10.0',
             'black>=22.0.0',
             'flake8>=5.0.0',
             'mypy>=1.0.0',
@@ -76,13 +78,13 @@ setup(
             'myst-parser>=1.0.0',
         ],
     },
-    entry_points={
+entry_points={
         'console_scripts': [
-            'scientific_discovery=scientific_discovery.cli:main',
+            'scientific_discovery=scientific_discovery.src.cli:main',
         ],
     },
     package_data={
-        'scientific_discovery': ['data/*.json'],
+        'scientific_discovery': ['src/data/*.json'],
     },
     include_package_data=True,
 )

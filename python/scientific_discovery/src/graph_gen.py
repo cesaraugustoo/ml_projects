@@ -1,5 +1,5 @@
-from graph_reasoning.graph_tools import *
-from graph_reasoning.embedding_tools import *
+from scientific_discovery.src.graph_tools import *
+from scientific_discovery.src.embedding_tools import *
 import networkx as nx
 import json
 import logging
