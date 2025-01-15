@@ -1,11 +1,11 @@
 import pytest
 import networkx as nx
-from graph_reasoning.agent_tools.science import (
+from scientific_discovery.src.agent_tools.science import (
     ScienceAgentGroup,
     ScientificAgent,
     ResearchContext
 )
-from graph_reasoning.graph_tools import GraphTools
+from scientific_discovery.src.graph_tools import GraphTools
 
 def test_agent_graph_integration(mock_llm_client, sample_graph):
     """Test integration between agents and graph operations."""

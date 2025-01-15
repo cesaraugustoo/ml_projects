@@ -1,5 +1,5 @@
 import pytest
-from graph_reasoning.agent_tools.base import (
+from scientific_discovery.src.agent_tools.base import (
     BaseAgent,
     AgentConfig,
     AgentRole,

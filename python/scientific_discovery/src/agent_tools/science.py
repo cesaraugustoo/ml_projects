@@ -8,27 +8,53 @@ from dataclasses import dataclass, field
 import networkx as nx
 import json
 import logging
-
+from enum import IntFlag, auto
 from .base import BaseAgent, AgentConfig, AgentRole, Message, ConversationMemory
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class ScienceRole(AgentRole):
-    """Extended roles specific to scientific agents."""
-    PLANNER = "planner"
-    ASSISTANT = "assistant"
-    ONTOLOGIST = "ontologist"
-    SCIENTIST = "scientist"
-    HYPOTHESIS = "hypothesis_agent"
-    OUTCOME = "outcome_agent"
-    MECHANISM = "mechanism_agent"
-    DESIGN = "design_principles_agent"
-    PROPERTIES = "unexpected_properties_agent"
-    COMPARISON = "comparison_agent"
-    NOVELTY = "novelty_agent"
-    CRITIC = "critic_agent"
+# class ScienceRole(AgentRole):
+#     """Extended roles specific to scientific agents."""
+#     PLANNER = "planner"
+#     ASSISTANT = "assistant"
+#     ONTOLOGIST = "ontologist"
+#     SCIENTIST = "scientist"
+#     HYPOTHESIS = "hypothesis_agent"
+#     OUTCOME = "outcome_agent"
+#     MECHANISM = "mechanism_agent"
+#     DESIGN = "design_principles_agent"
+#     PROPERTIES = "unexpected_properties_agent"
+#     COMPARISON = "comparison_agent"
+#     NOVELTY = "novelty_agent"
+#     CRITIC = "critic_agent"
+
+class ScienceRole(IntFlag):  # Change to IntFlag directly instead of inheriting
+    """Roles specific to scientific agents."""
+    NONE = 0
+    PLANNER = auto()
+    ASSISTANT = auto()
+    ONTOLOGIST = auto()
+    SCIENTIST = auto()
+    HYPOTHESIS = auto()
+    OUTCOME = auto()
+    MECHANISM = auto()
+    DESIGN = auto()
+    PROPERTIES = auto()
+    COMPARISON = auto()
+    NOVELTY = auto()
+    CRITIC = auto()
+
+    @classmethod
+    def from_base_role(cls, role: AgentRole) -> 'ScienceRole':
+        """Map base roles to science roles."""
+        mapping = {
+            AgentRole.PLANNER: cls.PLANNER,
+            AgentRole.ONTOLOGIST: cls.ONTOLOGIST,
+            AgentRole.CRITIC: cls.CRITIC,
+        }
+        return mapping.get(role, cls.SCIENTIST)
 
 @dataclass
 class ResearchContext:

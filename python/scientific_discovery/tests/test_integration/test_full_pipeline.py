@@ -1,6 +1,6 @@
 import pytest
-from graph_reasoning.graph_gen import KnowledgeGraphBuilder
-from graph_reasoning.agent_tools.science import create_science_agent_group
+from scientific_discovery.src.graph_gen import KnowledgeGraphBuilder
+from scientific_discovery.src.agent_tools.science import create_science_agent_group
 
 def test_full_research_pipeline(
     test_data_dir,

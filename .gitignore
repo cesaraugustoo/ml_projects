@@ -3,5 +3,5 @@ data/
 output/
 __pycache__/
 *_old.py
-
+.coverage
 .env

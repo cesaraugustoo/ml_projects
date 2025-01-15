@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 import networkx as nx
 from scientific_discovery.src.graph_tools import GraphTools
 

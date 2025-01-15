@@ -1,5 +1,5 @@
 import pytest
-from graph_reasoning.agent_tools.science import (
+from scientific_discovery.src.agent_tools.science import (
     ScientistAgent,
     OntologistAgent,
     CriticAgent,

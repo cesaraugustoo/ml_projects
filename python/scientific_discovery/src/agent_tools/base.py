@@ -3,20 +3,24 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Set
+import networkx as nx
+from enum import IntFlag, auto
+import json
 import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class AgentRole(Enum):
-    """Enumeration of possible agent roles."""
-    PLANNER = "planner"
-    ANALYZER = "analyzer"
-    RESEARCHER = "researcher"
-    CRITIC = "critic"
-    ONTOLOGIST = "ontologist"
-    COORDINATOR = "coordinator"
+class AgentRole(IntFlag):
+    """Base enumeration of possible agent roles."""
+    NONE = 0  # Always start with 0 for IntFlag
+    PLANNER = auto()
+    ANALYZER = auto()
+    RESEARCHER = auto()
+    CRITIC = auto()
+    ONTOLOGIST = auto()
+    COORDINATOR = auto()
 
 @dataclass
 class Message:
