@@ -3,6 +3,7 @@ data/
 output/
 __pycache__/
 test_data/
+.pytest_cache/
 *_old.py
 .coverage
 .env

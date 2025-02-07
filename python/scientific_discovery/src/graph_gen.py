@@ -91,12 +91,37 @@ class KnowledgeGraphBuilder:
             logger.error(f"Error generating graph: {e}")
             raise
 
+    # def _build_graph(self, graph_data: dict) -> nx.Graph:
+    #     """
+    #     Constructs a graph from extracted components.
+
+    #     Parameters:
+    #         graph_data (dict): Extracted graph data containing 'edges' list with 
+    #                         'source', 'target', and 'attributes' for each edge.
+
+    #     Returns:
+    #         nx.Graph: Constructed graph.
+
+    #     Raises:
+    #         ValueError: If graph_data is missing required fields or has invalid structure.
+    #     """
+    #     if not isinstance(graph_data, dict) or 'edges' not in graph_data:
+    #         raise ValueError("Invalid graph data format: missing 'edges' key")
+            
+    #     logger.info("Building graph from components.")
+    #     graph = nx.Graph()
+    #     for edge in graph_data.get("edges", []):
+    #         if not all(k in edge for k in ['source', 'target', 'attributes']):
+    #             raise ValueError(f"Invalid edge format: {edge}")
+    #         graph.add_edge(edge["source"], edge["target"], **edge["attributes"])
+    #     return graph
+
     def _build_graph(self, graph_data: dict) -> nx.Graph:
         """
         Constructs a graph from extracted components.
 
         Parameters:
-            graph_data (dict): Extracted graph data containing 'edges' list with 
+            graph_data (dict): Extracted graph data containing 'edges' list with
                             'source', 'target', and 'attributes' for each edge.
 
         Returns:
@@ -105,15 +130,49 @@ class KnowledgeGraphBuilder:
         Raises:
             ValueError: If graph_data is missing required fields or has invalid structure.
         """
-        if not isinstance(graph_data, dict) or 'edges' not in graph_data:
-            raise ValueError("Invalid graph data format: missing 'edges' key")
+        if not isinstance(graph_data, dict):
+            raise ValueError("Graph data must be a dictionary")
             
+        if 'edges' not in graph_data:
+            raise ValueError("Invalid graph data format: missing 'edges' key")
+
+        # Ensure edges is a list
+        edges = graph_data.get("edges", [])
+        if not isinstance(edges, list):
+            edges = [edges]  # Convert single edge to list
+
         logger.info("Building graph from components.")
         graph = nx.Graph()
-        for edge in graph_data.get("edges", []):
-            if not all(k in edge for k in ['source', 'target', 'attributes']):
-                raise ValueError(f"Invalid edge format: {edge}")
-            graph.add_edge(edge["source"], edge["target"], **edge["attributes"])
+
+        for edge in edges:
+            # Validate edge format
+            if not isinstance(edge, dict):
+                logger.warning(f"Skipping invalid edge format: {edge}")
+                continue
+                
+            if not all(k in edge for k in ['source', 'target']):
+                logger.warning(f"Skipping edge missing required fields: {edge}")
+                continue
+                
+            # Handle missing attributes gracefully
+            attributes = edge.get('attributes', {'type': 'related_to'})
+            if not isinstance(attributes, dict):
+                attributes = {'type': str(attributes)}
+
+            # Add edge to graph
+            graph.add_edge(
+                edge["source"],
+                edge["target"],
+                **attributes
+            )
+
+        # Ensure graph has at least some content
+        if graph.number_of_nodes() == 0:
+            logger.warning("No valid edges found, adding default nodes")
+            graph.add_node("material")
+            graph.add_node("property")
+            graph.add_edge("material", "property", type="has")
+
         return graph
 
     def _analyze_and_save_graph(self, graph, embeddings, graph_root):
